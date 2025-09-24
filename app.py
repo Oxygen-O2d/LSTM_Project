@@ -10,28 +10,28 @@ import time
 # --- Configuration ---
 MODEL_FILE = 'lstm_aqi_model.h5'
 SCALER_FILE = 'scaler.pkl'
-HISTORY_FILE = 'sample_history.npy' # New file for realistic history
+HISTORY_FILE = 'sample_history.npy' # For realistic history
 LOOK_BACK = 24  # Must be the same as used in training
 EXPECTED_FEATURES = 11
 
 # --- Helper Functions ---
 
 def get_aqi_category(pm25):
-    """Returns the AQI category and color for a given PM2.5 value."""
+    """Returns the AQI category, color, and text color for a given PM2.5 value."""
     if pm25 is None or np.isnan(pm25):
-        return "Invalid", "#808080", "white" # Category, background, text color
+        return "Invalid", "#e0e0e0", "black" # Category, background, text color
     if 0 <= pm25 <= 50:
-        return "Good", "#00e400", "black"
+        return "Good", "#d4edda", "#155724"
     elif 51 <= pm25 <= 100:
-        return "Moderate", "#ffff00", "black"
+        return "Moderate", "#fff3cd", "#856404"
     elif 101 <= pm25 <= 150:
-        return "Unhealthy for Sensitive Groups", "#ff7e00", "black"
+        return "Unhealthy for Sensitive Groups", "#ffeeba", "#856404"
     elif 151 <= pm25 <= 200:
-        return "Unhealthy", "#ff0000", "white"
+        return "Unhealthy", "#f8d7da", "#721c24"
     elif 201 <= pm25 <= 300:
-        return "Very Unhealthy", "#8f3f97", "white"
+        return "Very Unhealthy", "#e9d8fd", "#492b7c"
     else:
-        return "Hazardous", "#7e0023", "white"
+        return "Hazardous", "#d6d8db", "#383d41"
 
 # --- Load Model and Scaler ---
 @st.cache_resource
@@ -46,12 +46,8 @@ def load_prediction_assets():
         scaler = joblib.load(SCALER_FILE)
         sample_history = np.load(HISTORY_FILE, allow_pickle=True)
 
-        # --- Validation Check ---
         if scaler.n_features_in_ != EXPECTED_FEATURES or sample_history.shape[1] != EXPECTED_FEATURES:
-            st.error(
-                "Asset mismatch! The scaler or sample history file doesn't match the app's configuration. "
-                "Please retrain the model with the updated 'train.py' script."
-            )
+            st.error("Asset mismatch! Please retrain the model with the updated 'train.py' script.")
             return None, None, None
 
         return model, scaler, sample_history
@@ -62,62 +58,54 @@ def load_prediction_assets():
 # --- Streamlit App UI ---
 st.set_page_config(page_title="AQI Forecaster", layout="wide", initial_sidebar_state="collapsed")
 
-# Load assets
 model, scaler, sample_history = load_prediction_assets()
 
-# Custom CSS for the new "glassmorphism" design
+# Professional, clean CSS design
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
-    body {
-        font-family: 'Roboto', sans-serif;
+    body, .stApp {
+        font-family: 'Inter', sans-serif;
+        background-color: #f0f2f6;
     }
-
     .main {
-        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-        color: white;
+        background-color: #f0f2f6;
     }
-    .stApp {
-         background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-    }
-    .stNumberInput > div > div > input {
-        color: white;
-    }
-
-    .glass-container {
-        background: rgba(41, 51, 69, 0.4);
-        border-radius: 16px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
-        backdrop-filter: blur(7.5px);
-        -webkit-backdrop-filter: blur(7.5px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 2rem;
-    }
-
-    .stButton>button {
-        background-image: linear-gradient(to right, #DA22FF 0%, #9733EE  51%, #DA22FF  100%);
-        color: white;
-        font-weight: bold;
+    .card-container {
+        background-color: #ffffff;
         border-radius: 10px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e0e0e0;
+    }
+    .stButton>button {
+        background-color: #0068c9;
+        color: white;
+        font-weight: 600;
+        border-radius: 8px;
         border: none;
-        padding: 15px 0;
+        padding: 12px 0;
         width: 100%;
-        transition: 0.5s;
-        background-size: 200% auto;
+        transition: background-color 0.3s ease, box-shadow 0.3s ease;
         text-transform: uppercase;
-        letter-spacing: 2px;
+        letter-spacing: 1px;
     }
     .stButton>button:hover {
-        background-position: right center;
-        box-shadow: 0 0 20px #9733EE;
+        background-color: #005aa3;
+        box-shadow: 0 2px 8px rgba(0, 104, 201, 0.4);
     }
-    h1, h2, h3, .stMarkdown {
-        color: white !important;
+    h1, h2, h3 {
+        color: #1f2937 !important;
     }
-    .stSelectbox div[data-baseweb="select"] > div {
-        background-color: transparent;
-        color: white;
+    .stMarkdown, p, .stNumberInput, .stSelectbox {
+        color: #4b5563;
+    }
+    .prediction-container {
+        display: flex;
+        align-items: center; /* Vertically align items */
+        justify-content: center;
+        height: 350px; /* Fixed height for alignment */
     }
     .prediction-card {
         display: flex;
@@ -125,6 +113,7 @@ st.markdown("""
         justify-content: center;
         align-items: center;
         text-align: center;
+        width: 100%;
         height: 100%;
         padding: 20px;
         border-radius: 10px;
@@ -136,14 +125,13 @@ st.markdown("""
 
 # --- Main App Logic ---
 if model is not None:
-    st.title("🌬️ AQI Forecaster LSTM")
-    st.markdown("<p style='font-size: 1.2rem; color: #a0aec0;'>A deep learning model to predict PM2.5 air pollution for the next hour.</p>", unsafe_allow_html=True)
+    st.title("Air Quality Index Forecaster")
+    st.markdown("<p style='font-size: 1.1rem; color: #4b5563;'>Predict next-hour PM2.5 concentrations using a recurrent neural network.</p>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # --- User Input Section ---
     with st.container():
-        st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
-        st.header("📍 Input Current Conditions")
+        st.markdown("<div class='card-container'>", unsafe_allow_html=True)
+        st.header("Current Environmental Conditions")
 
         cols = st.columns(4)
         with cols[0]:
@@ -161,16 +149,14 @@ if model is not None:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        st.write("") # Spacer
-        _, col_btn, _ = st.columns([2, 1, 2])
+        st.write("")
+        _, col_btn, _ = st.columns([2.2, 1, 2.2])
         with col_btn:
-             predict_button = st.button("Forecast Next Hour")
+             predict_button = st.button("Generate Forecast")
 
     st.markdown("---")
 
-    # --- Prediction Logic and Animated Display ---
     if predict_button:
-        # Create the input array for the current hour
         current_data = np.array([
             pm25, dewp, temp, pres, iws, snow, rain,
             1 if wind_dir == "Calm/Variable (cv)" else 0,
@@ -179,67 +165,61 @@ if model is not None:
             1 if wind_dir == "South-East (SE)" else 0,
         ])
 
-        # Construct, scale, and predict
         input_sequence_unscaled = np.vstack([sample_history[1:], current_data])
         input_sequence_scaled = scaler.transform(input_sequence_unscaled)
         reshaped_input = input_sequence_scaled.reshape(1, LOOK_BACK, EXPECTED_FEATURES)
 
-        with st.spinner('🧠 LSTM model is thinking...'):
+        with st.spinner('Analyzing data with LSTM model...'):
             prediction_scaled = model.predict(reshaped_input)
 
-        # Inverse transform the prediction
         dummy_array = np.zeros((1, scaler.n_features_in_))
         dummy_array[0, 0] = prediction_scaled[0, 0]
         prediction = scaler.inverse_transform(dummy_array)[0, 0]
-        prediction = max(0.0, prediction) # Safeguard
+        prediction = max(0.0, prediction)
 
-        # Display results with animation
-        st.header("📈 Forecast Result")
+        st.header("Forecast Result")
 
         with st.container():
-            st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
-            res_cols = st.columns([1, 1.2], gap="large") # Adjusted column ratio
+            st.markdown("<div class='card-container'>", unsafe_allow_html=True)
+            res_cols = st.columns(2, gap="large")
             with res_cols[0]:
                 category, bg_color, text_color = get_aqi_category(prediction)
-
-                # Animated number count-up
                 result_placeholder = st.empty()
-                display_value = 0.0
-                step = prediction / 50.0 if prediction > 0 else 0
+                
+                # Animate the count-up
                 for i in range(51):
-                    display_value = min(prediction, i * step)
+                    display_value = min(prediction, i * (prediction / 50.0) if prediction > 0 else 0)
                     result_placeholder.markdown(f"""
-                        <div class="prediction-card" style="background-color: {bg_color};">
-                            <p style="color: {text_color}; font-size: 1.2rem; margin:0;">Predicted PM2.5</p>
-                            <h2 style="color: {text_color}; font-size: 4rem; font-weight: 700; margin:0; text-shadow: 2px 2px 10px rgba(0,0,0,0.3);">{display_value:.2f}</h2>
-                            <p style="color: {text_color}; font-size: 1.8rem; margin:0;">({category})</p>
+                        <div class="prediction-container">
+                            <div class="prediction-card" style="background-color: {bg_color}; border: 1px solid {text_color}33;">
+                                <p style="color: {text_color}; font-size: 1.1rem; margin:0; font-weight: 600;">PREDICTED PM2.5</p>
+                                <h2 style="color: {text_color}; font-size: 4rem; font-weight: 700; margin:0;">{display_value:.2f}</h2>
+                                <p style="color: {text_color}; font-size: 1.5rem; margin:0; font-weight: 600;">{category}</p>
+                            </div>
                         </div>
                     """, unsafe_allow_html=True)
-                    time.sleep(0.02)
+                    time.sleep(0.01)
 
             with res_cols[1]:
-                # Plotly Gauge Chart
+                # Plotly Gauge Chart, styled for light theme
                 fig = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=prediction,
-                    title={'text': "PM2.5 AQI Scale", 'font': {'color': 'white', 'size': 18}},
-                    number={'font': {'color': 'white', 'size': 36}},
+                    title={'text': "AQI Scale", 'font': {'color': '#1f2937', 'size': 18}},
+                    number={'font': {'color': '#1f2937', 'size': 36}},
                     domain={'x': [0, 1], 'y': [0, 1]},
                     gauge={
-                        'axis': {'range': [0, 301], 'tickwidth': 1, 'tickcolor': "darkblue", 'tickfont':{'color':'white'}},
-                        'bar': {'color': bg_color, 'thickness': 0.3},
+                        'axis': {'range': [0, 301], 'tickwidth': 1, 'tickcolor': "#4b5563", 'tickfont':{'color':'#4b5563'}},
+                        'bar': {'color': '#4b5563', 'thickness': 0.3},
                         'steps': [
-                            {'range': [0, 50], 'color': '#00e400'},
-                            {'range': [51, 100], 'color': '#ffff00'},
-                            {'range': [101, 150], 'color': '#ff7e00'},
-                            {'range': [151, 200], 'color': '#ff0000'},
-                            {'range': [201, 300], 'color': '#8f3f97'},
-                            {'range': [301, 500], 'color': '#7e0023'}],
+                            {'range': [0, 50], 'color': '#d4edda'}, {'range': [51, 100], 'color': '#fff3cd'},
+                            {'range': [101, 150], 'color': '#ffeeba'}, {'range': [151, 200], 'color': '#f8d7da'},
+                            {'range': [201, 300], 'color': '#e9d8fd'}, {'range': [301, 500], 'color': '#d6d8db'}],
                     }))
                 fig.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
-                    font={'color': "white"},
-                    height=300, # Control height for better alignment
+                    font={'color': "#1f2937"},
+                    height=350, # Match the height of the prediction card container
                     margin=dict(l=10, r=10, t=40, b=10)
                 )
                 st.plotly_chart(fig, use_container_width=True)
@@ -247,5 +227,5 @@ if model is not None:
             st.markdown("</div>", unsafe_allow_html=True)
 
 else:
-    st.error("Model assets not found. Please run `train.py` to generate `lstm_aqi_model.h5`, `scaler.pkl`, and `sample_history.npy`.")
+    st.error("Model assets not found. Please run `train.py` to generate the required model and data files.")
 
