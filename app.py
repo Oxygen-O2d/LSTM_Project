@@ -112,10 +112,15 @@ st.markdown("""
 
 # --- Main Application Logic ---
 if model is not None:
+    # Initialize session state to hold the prediction value
+    if 'prediction' not in st.session_state:
+        st.session_state.prediction = None
+
     st.title("Air Quality Index Forecaster")
     st.markdown("<p style='font-size: 1.1rem; color: #8b949e;'>Predict next-hour PM2.5 concentrations using a recurrent neural network.</p>", unsafe_allow_html=True)
     st.markdown("---")
 
+    # --- Input Section ---
     with st.container():
         st.markdown("<div class='card-container'>", unsafe_allow_html=True)
         st.header("Current Environmental Conditions")
@@ -137,7 +142,6 @@ if model is not None:
         st.write("")
         _, col_btn, _ = st.columns([2.2, 1, 2.2])
         if col_btn.button("Generate Forecast"):
-            
             with st.spinner('Analyzing data with LSTM model...'):
                 current_data = np.array([
                     pm25, dewp, temp, pres, iws, snow, rain,
@@ -154,55 +158,58 @@ if model is not None:
                 
                 dummy_array = np.zeros((1, scaler.n_features_in_))
                 dummy_array[0, 0] = prediction_scaled[0, 0]
-                prediction = scaler.inverse_transform(dummy_array)[0, 0]
-                prediction = max(0.0, prediction)
+                prediction_val = scaler.inverse_transform(dummy_array)[0, 0]
+                st.session_state.prediction = max(0.0, prediction_val)
 
-            st.markdown("---")
-            st.header("Forecast Result")
+    # --- Display Forecast Result (only if a prediction exists in the session state) ---
+    if st.session_state.prediction is not None:
+        prediction = st.session_state.prediction
+        
+        st.markdown("---")
+        st.header("Forecast Result")
 
-            with st.container():
-                st.markdown("<div class='card-container'>", unsafe_allow_html=True)
-                res_cols = st.columns([0.8, 1.2], gap="large")
-                
-                with res_cols[0]:
-                    category, accent_color = get_aqi_category(prediction)
-                    result_placeholder = st.empty()
-                    # Animate the count-up
-                    for i in range(51):
-                        display_value = min(prediction, i * (prediction / 50.0) if prediction > 0 else 0)
-                        result_placeholder.markdown(f"""
-                            <div class="prediction-card" style="border-left-color: {accent_color};">
-                                <p style="color: #8b949e; font-size: 1.1rem; margin:0; font-weight: 600;">PREDICTED PM2.5</p>
-                                <h2 style="color: {accent_color}; font-size: 4rem; font-weight: 700; margin:0; line-height: 1.2;">{display_value:.2f}</h2>
-                                <p style="color: #c9d1d9; font-size: 1.5rem; margin:0; font-weight: 600;">{category}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        time.sleep(0.01)
+        with st.container():
+            st.markdown("<div class='card-container'>", unsafe_allow_html=True)
+            res_cols = st.columns([0.8, 1.2], gap="large")
+            
+            with res_cols[0]:
+                category, accent_color = get_aqi_category(prediction)
+                result_placeholder = st.empty()
+                # Animate the count-up
+                for i in range(51):
+                    display_value = min(prediction, i * (prediction / 50.0) if prediction > 0 else 0)
+                    result_placeholder.markdown(f"""
+                        <div class="prediction-card" style="border-left-color: {accent_color};">
+                            <p style="color: #8b949e; font-size: 1.1rem; margin:0; font-weight: 600;">PREDICTED PM2.5</p>
+                            <h2 style="color: {accent_color}; font-size: 4rem; font-weight: 700; margin:0; line-height: 1.2;">{display_value:.2f}</h2>
+                            <p style="color: #c9d1d9; font-size: 1.5rem; margin:0; font-weight: 600;">{category}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    time.sleep(0.01)
 
-                with res_cols[1]:
-                    fig = go.Figure(go.Indicator(
-                        mode="gauge+number", value=prediction,
-                        title={'text': "AQI Scale", 'font': {'color': '#f0f6fc', 'size': 18}},
-                        number={'font': {'color': '#f0f6fc', 'size': 36}},
-                        domain={'x': [0, 1], 'y': [0, 1]},
-                        gauge={
-                            'axis': {'range': [0, 301], 'tickwidth': 1, 'tickcolor': "#8b949e", 'tickfont':{'color':'#8b949e'}},
-                            'bar': {'color': '#8b949e', 'thickness': 0.3},
-                            'steps': [
-                                {'range': [0, 50], 'color': '#1a3c26'}, {'range': [51, 100], 'color': '#4d3c15'},
-                                {'range': [101, 150], 'color': '#522b11'}, {'range': [151, 200], 'color': '#541d1d'},
-                                {'range': [201, 300], 'color': '#3c2155'}, {'range': [301, 500], 'color': '#31194a'}],
-                        }))
-                    fig.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        font={'color': "#f0f6fc"},
-                        height=300,
-                        margin=dict(l=10, r=10, t=60, b=10) # Increased top margin
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
+            with res_cols[1]:
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number", value=prediction,
+                    title={'text': "AQI Scale", 'font': {'color': '#f0f6fc', 'size': 18}},
+                    number={'font': {'color': '#f0f6fc', 'size': 36}},
+                    domain={'x': [0, 1], 'y': [0, 1]},
+                    gauge={
+                        'axis': {'range': [0, 301], 'tickwidth': 1, 'tickcolor': "#8b949e", 'tickfont':{'color':'#8b949e'}},
+                        'bar': {'color': '#8b949e', 'thickness': 0.3},
+                        'steps': [
+                            {'range': [0, 50], 'color': '#1a3c26'}, {'range': [51, 100], 'color': '#4d3c15'},
+                            {'range': [101, 150], 'color': '#522b11'}, {'range': [151, 200], 'color': '#541d1d'},
+                            {'range': [201, 300], 'color': '#3c2155'}, {'range': [301, 500], 'color': '#31194a'}],
+                    }))
+                fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font={'color': "#f0f6fc"},
+                    height=300,
+                    margin=dict(l=10, r=10, t=60, b=10)
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-                st.markdown("</div>", unsafe_allow_html=True)
-
+            st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.error("Model assets not found. Please run `train.py` to generate the required model and data files.")
 
