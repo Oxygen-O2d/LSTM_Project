@@ -6,9 +6,9 @@ import json
 import os
 
 # --- Constants ---
-MODEL_DIR = 'model'
-MODEL_PATH = os.path.join(MODEL_DIR, 'imdb_sentiment_lstm.h5')
-WORD_INDEX_PATH = os.path.join(MODEL_DIR, 'word_index.json')
+# Updated paths to look for files in the root directory
+MODEL_PATH = 'imdb_sentiment_lstm.h5'
+WORD_INDEX_PATH = 'word_index.json'
 MAX_LEN = 200  # This must match the training configuration
 
 # --- Load Model and Word Index ---
@@ -16,7 +16,7 @@ MAX_LEN = 200  # This must match the training configuration
 @st.cache_resource
 def load_model_and_word_index():
     """Loads the saved Keras model and the word_index dictionary."""
-    print("Loading model and word index...")
+    print("Loading model and word index from root directory...")
     try:
         model = tf.keras.models.load_model(MODEL_PATH)
         with open(WORD_INDEX_PATH, 'r') as f:
@@ -26,8 +26,8 @@ def load_model_and_word_index():
     except Exception as e:
         st.error(f"Error loading model artifacts: {e}")
         st.error(
-            "Please make sure the 'model/imdb_sentiment_lstm.h5' and "
-            "'model/word_index.json' files are present."
+            "Please make sure 'imdb_sentiment_lstm.h5' and "
+            "'word_index.json' are in the same directory as app.py."
         )
         return None, None
 
@@ -81,3 +81,4 @@ if st.button("Analyze Sentiment"):
 
 st.markdown("---")
 st.info("This web app is powered by Streamlit and a TensorFlow/Keras LSTM model.")
+
