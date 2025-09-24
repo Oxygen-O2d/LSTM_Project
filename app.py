@@ -9,8 +9,8 @@ import os
 # --- Configuration ---
 MODEL_FILE = 'lstm_aqi_model.h5'
 SCALER_FILE = 'scaler.pkl'
+HISTORY_FILE = 'sample_history.npy' # New file for realistic history
 LOOK_BACK = 24  # Must be the same as used in training
-# This MUST match the number of columns in final_cols in train.py
 EXPECTED_FEATURES = 11 
 
 # --- Helper Functions ---
@@ -18,52 +18,51 @@ EXPECTED_FEATURES = 11
 def get_aqi_category(pm25):
     """Returns the AQI category and color for a given PM2.5 value."""
     if pm25 is None or np.isnan(pm25):
-        return "Invalid", "#808080" # Grey for invalid
+        return "Invalid", "#808080"
     if 0 <= pm25 <= 50:
-        return "Good", "#00e400"  # Green
+        return "Good", "#00e400"
     elif 51 <= pm25 <= 100:
-        return "Moderate", "#ffff00"  # Yellow
+        return "Moderate", "#ffff00"
     elif 101 <= pm25 <= 150:
-        return "Unhealthy for Sensitive Groups", "#ff7e00"  # Orange
+        return "Unhealthy for Sensitive Groups", "#ff7e00"
     elif 151 <= pm25 <= 200:
-        return "Unhealthy", "#ff0000"  # Red
+        return "Unhealthy", "#ff0000"
     elif 201 <= pm25 <= 300:
-        return "Very Unhealthy", "#8f3f97"  # Purple
+        return "Very Unhealthy", "#8f3f97"
     else:
-        return "Hazardous", "#7e0023"  # Maroon
+        return "Hazardous", "#7e0023"
 
 # --- Load Model and Scaler ---
 @st.cache_resource
-def load_prediction_model():
-    """Loads the trained LSTM model and scaler."""
-    if not os.path.exists(MODEL_FILE) or not os.path.exists(SCALER_FILE):
+def load_prediction_assets():
+    """Loads the trained LSTM model, scaler, and sample history."""
+    files_exist = all(os.path.exists(f) for f in [MODEL_FILE, SCALER_FILE, HISTORY_FILE])
+    if not files_exist:
         return None, None, None
         
     try:
         model = load_model(MODEL_FILE)
         scaler = joblib.load(SCALER_FILE)
+        sample_history = np.load(HISTORY_FILE)
         
         # --- Validation Check ---
-        if scaler.n_features_in_ != EXPECTED_FEATURES:
+        if scaler.n_features_in_ != EXPECTED_FEATURES or sample_history.shape[1] != EXPECTED_FEATURES:
             st.error(
-                f"Scaler feature mismatch! The loaded scaler expects {scaler.n_features_in_} features, "
-                f"but the app is configured for {EXPECTED_FEATURES}. "
+                "Asset mismatch! The scaler or sample history file doesn't match the app's configuration. "
                 "Please retrain the model with the updated 'train.py' script."
             )
             return None, None, None
 
-        # Create a sample historical sequence for the app to use
-        sample_history = np.random.rand(LOOK_BACK, EXPECTED_FEATURES)
         return model, scaler, sample_history
     except Exception as e:
-        st.error(f"Error loading model or scaler: {e}")
+        st.error(f"Error loading prediction assets: {e}")
         return None, None, None
 
 # --- Streamlit App UI ---
 st.set_page_config(page_title="AQI Forecaster", layout="wide", initial_sidebar_state="collapsed")
 
-# Load model, scaler, and sample history
-model, scaler, sample_history = load_prediction_model()
+# Load assets
+model, scaler, sample_history = load_prediction_assets()
 
 # Custom CSS for modern styling
 st.markdown("""
@@ -108,7 +107,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- Header ---
+# --- Main App Logic ---
 if model is not None:
     st.title("🌬️ Air Quality (AQI) Forecaster")
     st.markdown("Predict the PM2.5 concentration for the next hour using a sophisticated LSTM model. Enter the current weather and pollution data to get a forecast.")
@@ -140,7 +139,7 @@ if model is not None:
 
     # --- Prediction Logic and Display ---
     if predict_button:
-        # 1. Create the input array for the current hour, matching training order from train.py
+        # Create the input array for the current hour, matching training order
         current_data = np.array([
             pm25, dewp, temp, pres, iws, snow, rain,
             1 if wind_dir == "Calm/Variable (cv)" else 0,
@@ -149,23 +148,26 @@ if model is not None:
             1 if wind_dir == "South-East (SE)" else 0,
         ])
 
-        # 2. Construct the full sequence for prediction
+        # Construct the full, unscaled sequence for prediction using the real history
         input_sequence_unscaled = np.vstack([sample_history[1:], current_data])
         
-        # 3. Scale the sequence
+        # Scale the entire sequence
         input_sequence_scaled = scaler.transform(input_sequence_unscaled)
         
-        # 4. Reshape for LSTM and predict
+        # Reshape for LSTM and predict
         reshaped_input = input_sequence_scaled.reshape(1, LOOK_BACK, EXPECTED_FEATURES)
         with st.spinner('🧠 Forecasting with LSTM...'):
             prediction_scaled = model.predict(reshaped_input)
 
-        # 5. Inverse transform the prediction
+        # Inverse transform the prediction
         dummy_array = np.zeros((1, scaler.n_features_in_))
         dummy_array[0, 0] = prediction_scaled[0, 0]
         prediction = scaler.inverse_transform(dummy_array)[0, 0]
         
-        # 6. Display results
+        # Safeguard: Ensure prediction is not negative
+        prediction = max(0.0, prediction)
+        
+        # Display results
         st.header("📈 Forecast Result")
         category, color = get_aqi_category(prediction)
         
@@ -176,6 +178,5 @@ if model is not None:
         </div>
         """, unsafe_allow_html=True)
 else:
-    st.error("Model files not found. Please run `train.py` to generate the model and scaler.")
-    st.info("Ensure `lstm_aqi_model.h5` and `scaler.pkl` are in the same directory as this app.")
+    st.error("Model assets not found. Please run `train.py` to generate `lstm_aqi_model.h5`, `scaler.pkl`, and `sample_history.npy`.")
 
