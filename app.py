@@ -1,82 +1,83 @@
 import streamlit as st
-import numpy as np
 import tensorflow as tf
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+import numpy as np
 import json
+from tensorflow.keras.preprocessing.text import tokenizer_from_json
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+import os
 
-# --- Constants ---
-# Paths for the spam detection project artifacts
+# --- Configuration ---
 MODEL_PATH = 'spam_lstm_model.h5'
-WORD_INDEX_PATH = 'spam_tokenizer_word_index.json'
-MAX_LEN = 100  # This must match the training configuration
+TOKENIZER_PATH = 'spam_tokenizer.json' # <-- Updated path for the new tokenizer file
+MAX_LEN = 100
 
-# --- Load Model and Word Index ---
+# --- Caching Functions for Efficiency ---
 @st.cache_resource
-def load_model_and_tokenizer():
-    """Loads the saved Keras model and the tokenizer's word_index."""
-    print("Loading spam detection model and tokenizer...")
+def load_model_artifacts():
+    """
+    Loads the trained model and tokenizer from disk.
+    The @st.cache_resource decorator ensures this is only done once.
+    """
+    if not os.path.exists(MODEL_PATH) or not os.path.exists(TOKENIZER_PATH):
+        st.error(f"Error: Model or tokenizer file not found. "
+                 f"Please run the `train_spam_model.py` script first to generate '{MODEL_PATH}' and '{TOKENIZER_PATH}'.")
+        st.stop()
+    
     try:
+        print("Loading Keras model...")
         model = tf.keras.models.load_model(MODEL_PATH)
-        with open(WORD_INDEX_PATH, 'r') as f:
-            word_index = json.load(f)
-        print("Loading complete.")
-        return model, word_index
+        
+        print("Loading Keras tokenizer...")
+        with open(TOKENIZER_PATH, 'r', encoding='utf-8') as f:
+            tokenizer_json = f.read()
+            tokenizer = tokenizer_from_json(tokenizer_json)
+            
+        return model, tokenizer
     except Exception as e:
         st.error(f"Error loading model artifacts: {e}")
-        st.error(
-            "Please run 'train_spam_model.py' first to generate the necessary files."
-        )
-        return None, None
+        st.stop()
 
-model, word_index = load_model_and_tokenizer()
+# --- Preprocessing ---
+def preprocess_input(text, tokenizer, max_len):
+    """
+    Takes raw text and preprocesses it using the loaded tokenizer.
+    """
+    sequences = tokenizer.texts_to_sequences([text])
+    padded_sequence = pad_sequences(sequences, maxlen=max_len, padding='post', truncating='post')
+    return padded_sequence
 
-# --- Preprocessing Function ---
-def encode_and_pad_text(text, word_idx, max_len):
-    """Encodes an SMS message into a padded sequence of integers."""
-    words = text.lower().split()
-    # Use word_idx.get(word, 1) for <OOV> token, as Keras Tokenizer usually assigns 1 for it
-    encoded_message = [word_idx.get(word, 1) for word in words]
-    padded_message = pad_sequences(
-        [encoded_message], maxlen=max_len, padding='post', truncating='post'
-    )
-    return padded_message
+# --- Load artifacts ---
+model, tokenizer = load_model_artifacts()
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="SMS Spam Detector", layout="centered")
+st.set_page_config(page_title="Spam SMS Detector", layout="centered")
 
-st.title("📱 SMS Spam Detector")
-st.markdown(
-    "Hello from Surat, Gujarat! This app uses an LSTM model to classify SMS messages as **Spam** or **Ham** (not spam)."
-)
-st.markdown("---")
+st.title("🛡️ Spam SMS Detector")
+st.write("Enter an SMS message below to classify it as Spam or Ham (Not Spam).")
 
-user_input = st.text_area(
-    "Enter an SMS message to classify:",
-    height=100,
-    placeholder="e.g., Congratulations! you have won a $1,000 Walmart gift card. Go to http://..."
-)
+user_input = st.text_area("Enter message here:", height=150, placeholder="e.g., Congratulations! You've won a prize...")
 
 if st.button("Classify Message"):
-    if model is not None and word_index is not None:
-        if user_input:
-            # 1. Preprocess the input
-            processed_input = encode_and_pad_text(user_input, word_index, MAX_LEN)
-
-            # 2. Make prediction
-            with st.spinner('Analyzing message...'):
+    if user_input:
+        with st.spinner('Analyzing message...'):
+            # Preprocess the input
+            processed_input = preprocess_input(user_input, tokenizer, MAX_LEN)
+            
+            # Make prediction
+            try:
                 prediction_score = model.predict(processed_input, verbose=0)[0][0]
+                
+                # Display result
+                if prediction_score > 0.5:
+                    st.error(f"Prediction: SPAM (Confidence: {prediction_score:.2%})")
+                else:
+                    st.success(f"Prediction: HAM (Confidence: {1 - prediction_score:.2%})")
+            except Exception as e:
+                st.error(f"An error occurred during prediction: {e}")
 
-            # 3. Display result
-            # 0 = Ham, 1 = Spam
-            if prediction_score > 0.5:
-                st.error(f"**Classification: SPAM** (Confidence: {prediction_score:.2%})")
-            else:
-                st.success(f"**Classification: HAM** (Confidence: {1 - prediction_score:.2%})")
-        else:
-            st.warning("Please enter a message to classify.")
     else:
-        st.error("Model is not loaded. Cannot perform analysis.")
+        st.warning("Please enter a message to classify.")
 
 st.markdown("---")
-st.info("Powered by Streamlit and a TensorFlow/Keras LSTM model.")
+st.info("This app uses an LSTM model trained on the SMS Spam Collection Dataset.")
 
