@@ -12,7 +12,7 @@ MODEL_FILE = 'lstm_aqi_model.h5'
 SCALER_FILE = 'scaler.pkl'
 HISTORY_FILE = 'sample_history.npy' # New file for realistic history
 LOOK_BACK = 24  # Must be the same as used in training
-EXPECTED_FEATURES = 11 
+EXPECTED_FEATURES = 11
 
 # --- Helper Functions ---
 
@@ -40,12 +40,12 @@ def load_prediction_assets():
     files_exist = all(os.path.exists(f) for f in [MODEL_FILE, SCALER_FILE, HISTORY_FILE])
     if not files_exist:
         return None, None, None
-        
+
     try:
         model = load_model(MODEL_FILE)
         scaler = joblib.load(SCALER_FILE)
         sample_history = np.load(HISTORY_FILE, allow_pickle=True)
-        
+
         # --- Validation Check ---
         if scaler.n_features_in_ != EXPECTED_FEATURES or sample_history.shape[1] != EXPECTED_FEATURES:
             st.error(
@@ -86,11 +86,11 @@ st.markdown("""
     }
 
     .glass-container {
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(41, 51, 69, 0.4);
         border-radius: 16px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(5px);
-        -webkit-backdrop-filter: blur(5px);
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(7.5px);
+        -webkit-backdrop-filter: blur(7.5px);
         border: 1px solid rgba(255, 255, 255, 0.1);
         padding: 2rem;
     }
@@ -119,6 +119,17 @@ st.markdown("""
         background-color: transparent;
         color: white;
     }
+    .prediction-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        height: 100%;
+        padding: 20px;
+        border-radius: 10px;
+        transition: background-color 0.5s ease;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -133,7 +144,7 @@ if model is not None:
     with st.container():
         st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
         st.header("📍 Input Current Conditions")
-        
+
         cols = st.columns(4)
         with cols[0]:
             pm25 = st.number_input("PM2.5 (µg/m³)", min_value=0.0, value=75.0, step=1.0)
@@ -154,7 +165,7 @@ if model is not None:
         _, col_btn, _ = st.columns([2, 1, 2])
         with col_btn:
              predict_button = st.button("Forecast Next Hour")
-    
+
     st.markdown("---")
 
     # --- Prediction Logic and Animated Display ---
@@ -172,7 +183,7 @@ if model is not None:
         input_sequence_unscaled = np.vstack([sample_history[1:], current_data])
         input_sequence_scaled = scaler.transform(input_sequence_unscaled)
         reshaped_input = input_sequence_scaled.reshape(1, LOOK_BACK, EXPECTED_FEATURES)
-        
+
         with st.spinner('🧠 LSTM model is thinking...'):
             prediction_scaled = model.predict(reshaped_input)
 
@@ -181,27 +192,27 @@ if model is not None:
         dummy_array[0, 0] = prediction_scaled[0, 0]
         prediction = scaler.inverse_transform(dummy_array)[0, 0]
         prediction = max(0.0, prediction) # Safeguard
-        
+
         # Display results with animation
         st.header("📈 Forecast Result")
-        
+
         with st.container():
             st.markdown("<div class='glass-container'>", unsafe_allow_html=True)
-            res_cols = st.columns([1, 1.5])
+            res_cols = st.columns([1, 1.2], gap="large") # Adjusted column ratio
             with res_cols[0]:
                 category, bg_color, text_color = get_aqi_category(prediction)
-                
+
                 # Animated number count-up
                 result_placeholder = st.empty()
                 display_value = 0.0
-                step = prediction / 50.0
+                step = prediction / 50.0 if prediction > 0 else 0
                 for i in range(51):
                     display_value = min(prediction, i * step)
                     result_placeholder.markdown(f"""
-                        <div style="background-color: {bg_color}; padding: 20px; border-radius: 10px; text-align: center;">
+                        <div class="prediction-card" style="background-color: {bg_color};">
                             <p style="color: {text_color}; font-size: 1.2rem; margin:0;">Predicted PM2.5</p>
-                            <h2 style="color: {text_color}; font-size: 3rem; margin:0;">{display_value:.2f}</h2>
-                            <p style="color: {text_color}; font-size: 1.5rem; margin:0;">({category})</p>
+                            <h2 style="color: {text_color}; font-size: 4rem; font-weight: 700; margin:0; text-shadow: 2px 2px 10px rgba(0,0,0,0.3);">{display_value:.2f}</h2>
+                            <p style="color: {text_color}; font-size: 1.8rem; margin:0;">({category})</p>
                         </div>
                     """, unsafe_allow_html=True)
                     time.sleep(0.02)
@@ -211,12 +222,12 @@ if model is not None:
                 fig = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=prediction,
-                    title={'text': "PM2.5 AQI Scale", 'font': {'color': 'white'}},
-                    number={'font': {'color': 'white'}},
+                    title={'text': "PM2.5 AQI Scale", 'font': {'color': 'white', 'size': 18}},
+                    number={'font': {'color': 'white', 'size': 36}},
                     domain={'x': [0, 1], 'y': [0, 1]},
                     gauge={
                         'axis': {'range': [0, 301], 'tickwidth': 1, 'tickcolor': "darkblue", 'tickfont':{'color':'white'}},
-                        'bar': {'color': bg_color},
+                        'bar': {'color': bg_color, 'thickness': 0.3},
                         'steps': [
                             {'range': [0, 50], 'color': '#00e400'},
                             {'range': [51, 100], 'color': '#ffff00'},
@@ -225,7 +236,12 @@ if model is not None:
                             {'range': [201, 300], 'color': '#8f3f97'},
                             {'range': [301, 500], 'color': '#7e0023'}],
                     }))
-                fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"})
+                fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font={'color': "white"},
+                    height=300, # Control height for better alignment
+                    margin=dict(l=10, r=10, t=40, b=10)
+                )
                 st.plotly_chart(fig, use_container_width=True)
 
             st.markdown("</div>", unsafe_allow_html=True)
