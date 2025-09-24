@@ -43,7 +43,8 @@ def load_prediction_assets():
     try:
         model = load_model(MODEL_FILE)
         scaler = joblib.load(SCALER_FILE)
-        sample_history = np.load(HISTORY_FILE)
+        # FIX: Added allow_pickle=True to load the history file
+        sample_history = np.load(HISTORY_FILE, allow_pickle=True)
         
         # --- Validation Check ---
         if scaler.n_features_in_ != EXPECTED_FEATURES or sample_history.shape[1] != EXPECTED_FEATURES:
