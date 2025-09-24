@@ -10,14 +10,15 @@ import os
 MODEL_FILE = 'lstm_aqi_model.h5'
 SCALER_FILE = 'scaler.pkl'
 LOOK_BACK = 24  # Must be the same as used in training
-# The number of features the model was trained on (pm2.5, DEWP, TEMP, etc. + one-hot encoded wind)
-# pm2.5, DEWP, TEMP, PRES, Iws, Is, Ir, wind_cv, wind_NE, wind_NW, wind_SE -> 11 features
-EXPECTED_FEATURES = 11
+# This MUST match the number of columns in final_cols in train.py
+EXPECTED_FEATURES = 11 
 
 # --- Helper Functions ---
 
 def get_aqi_category(pm25):
     """Returns the AQI category and color for a given PM2.5 value."""
+    if pm25 is None or np.isnan(pm25):
+        return "Invalid", "#808080" # Grey for invalid
     if 0 <= pm25 <= 50:
         return "Good", "#00e400"  # Green
     elif 51 <= pm25 <= 100:
@@ -41,8 +42,17 @@ def load_prediction_model():
     try:
         model = load_model(MODEL_FILE)
         scaler = joblib.load(SCALER_FILE)
+        
+        # --- Validation Check ---
+        if scaler.n_features_in_ != EXPECTED_FEATURES:
+            st.error(
+                f"Scaler feature mismatch! The loaded scaler expects {scaler.n_features_in_} features, "
+                f"but the app is configured for {EXPECTED_FEATURES}. "
+                "Please retrain the model with the updated 'train.py' script."
+            )
+            return None, None, None
+
         # Create a sample historical sequence for the app to use
-        # This simulates the 23 hours of data leading up to the user's input
         sample_history = np.random.rand(LOOK_BACK, EXPECTED_FEATURES)
         return model, scaler, sample_history
     except Exception as e:
@@ -119,10 +129,9 @@ if model is not None:
             wind_dir = st.selectbox("Wind Direction", ["South-East (SE)", "Calm/Variable (cv)", "North-East (NE)", "North-West (NW)"])
             iws = st.number_input("Cumulated Wind Speed (m/s)", min_value=0.0, value=20.0, step=1.0)
         with cols[3]:
-            snow = st.number_input("Cumulated Snow (hours)", min_value=0.0, value=0.0, step=1.0)
-            rain = st.number_input("Cumulated Rain (hours)", min_value=0.0, value=0.0, step=1.0)
+            snow = st.number_input("Cumulated Snow (hours)", min_value=0.0, value=0.0, step=1.0, key="Is")
+            rain = st.number_input("Cumulated Rain (hours)", min_value=0.0, value=0.0, step=1.0, key="Ir")
 
-        # Center the button
         _, col_btn, _ = st.columns([2,1,2])
         with col_btn:
              predict_button = st.button("Forecast Next Hour 🔮")
@@ -131,10 +140,7 @@ if model is not None:
 
     # --- Prediction Logic and Display ---
     if predict_button:
-        # 1. Create the input array for the current hour, matching training order
-        wind_map = {"North-East (NE)": [1,0,0,0], "North-West (NW)": [0,1,0,0], "South-East (SE)": [0,0,1,0], "Calm/Variable (cv)": [0,0,0,1]}
-        # Order must be: pm2.5, DEWP, TEMP, PRES, Iws, Is, Ir, and then the 4 wind values in the same order as training
-        # We assume the order of wind columns is cv, NE, NW, SE
+        # 1. Create the input array for the current hour, matching training order from train.py
         current_data = np.array([
             pm25, dewp, temp, pres, iws, snow, rain,
             1 if wind_dir == "Calm/Variable (cv)" else 0,
